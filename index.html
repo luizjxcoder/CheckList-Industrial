@@ -56,13 +56,18 @@
         }
     </style>
 </head>
-<body class="min-h-screen bg-white dark:bg-slate-800 transition-colors duration-300" style="background-color: #E6E6E6"; data-dark-bg= #1E293B">
+<body class="min-h-screen bg-white dark:bg-slate-800 transition-colors duration-300" style="background-color: #E6E6E6;" data-dark-bg="#1E293B">
     <div class="container mx-auto px-2 sm:px-4 py-4 sm:py-8 max-w-4xl">
-        <!-- Dark Mode Toggle -->
-        <div class="fixed top-2 right-2 sm:top-4 sm:right-4 z-40">
+        <!-- Dark Mode Toggle and Save Indicator -->
+        <div class="fixed top-2 right-2 sm:top-4 sm:right-4 z-40 flex flex-col space-y-2">
             <button onclick="toggleDarkMode()" class="bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 p-2 sm:p-3 rounded-full shadow-xl border border-gray-200 dark:border-gray-600 transition-all transform hover:scale-105 text-sm sm:text-base" id="dark-mode-toggle">
                 <span id="dark-mode-icon">🌙</span>
             </button>
+            
+            <!-- Save Status Indicator -->
+            <div id="save-indicator" class="bg-green-500 text-white px-2 py-1 rounded-full text-xs font-medium shadow-lg opacity-0 transition-opacity duration-300 text-center">
+                💾 Salvo
+            </div>
         </div>
 
         <!-- Header -->
@@ -400,6 +405,62 @@
         let checkedItems = new Set();
         let okItems = new Set();
         let nokItems = new Set();
+        let itemObservations = {}; // Store observations for each item
+
+        // Auto-save functionality
+        function saveToLocalStorage() {
+            const checklistData = {
+                checkedItems: Array.from(checkedItems),
+                okItems: Array.from(okItems),
+                nokItems: Array.from(nokItems),
+                itemObservations: itemObservations,
+                lastSaved: new Date().toISOString()
+            };
+            localStorage.setItem('checklistData', JSON.stringify(checklistData));
+            console.log('Dados salvos automaticamente:', new Date().toLocaleString('pt-BR'));
+            
+            // Show save indicator
+            showSaveIndicator();
+        }
+
+        // Show save indicator
+        function showSaveIndicator() {
+            const indicator = document.getElementById('save-indicator');
+            if (indicator) {
+                indicator.style.opacity = '1';
+                setTimeout(() => {
+                    indicator.style.opacity = '0';
+                }, 2000);
+            }
+        }
+
+        // Load data from localStorage
+        function loadFromLocalStorage() {
+            const saved = localStorage.getItem('checklistData');
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    checkedItems = new Set(data.checkedItems || []);
+                    okItems = new Set(data.okItems || []);
+                    nokItems = new Set(data.nokItems || []);
+                    itemObservations = data.itemObservations || {};
+                    
+                    console.log('Dados carregados do navegador:', new Date(data.lastSaved).toLocaleString('pt-BR'));
+                    return true;
+                } catch (e) {
+                    console.log('Erro ao carregar dados salvos:', e);
+                    return false;
+                }
+            }
+            return false;
+        }
+
+        // Clear saved data
+        function clearSavedData() {
+            localStorage.removeItem('checklistData');
+            localStorage.removeItem('itemObservations'); // Remove old format too
+            console.log('Dados salvos removidos');
+        }
 
         // Initialize the checklist
         function initializeChecklist() {
@@ -469,6 +530,7 @@
             });
 
             updateStats();
+            saveToLocalStorage(); // Auto-save after each change
         }
 
         // Toggle item OK state
@@ -532,6 +594,7 @@
             }
             
             updateStats();
+            saveToLocalStorage(); // Auto-save after each change
         }
 
         // Toggle item NOK state
@@ -596,6 +659,7 @@
             }
             
             updateStats();
+            saveToLocalStorage(); // Auto-save after each change
         }
 
         // Update statistics
@@ -621,10 +685,12 @@
 
         // Reset checklist
         function resetChecklist() {
-            if (confirm('Tem certeza que deseja resetar todo o checklist?')) {
+            if (confirm('Tem certeza que deseja resetar todo o checklist? Todos os dados salvos serão perdidos.')) {
                 checkedItems.clear();
                 okItems.clear();
                 nokItems.clear();
+                itemObservations = {}; // Clear observations too
+                clearSavedData(); // Clear saved data
                 const isDark = document.documentElement.classList.contains('dark');
                 
                 checklistItems.forEach(item => {
@@ -675,11 +741,12 @@
             csvContent += `Progresso:,${percentage}%\n\n`;
             
             // Table headers
-            csvContent += "ID,Categoria,Item,Status,Critério de Aceitação,Tipo de Defeito,Tipo de Inspeção,Ação Corretiva\n";
+            csvContent += "ID,Categoria,Item,Status,Critério de Aceitação,Tipo de Defeito,Tipo de Inspeção,Ação Corretiva,Observações\n";
             
             // Table data
             checklistItems.forEach(item => {
                 const status = okItems.has(item.id) ? 'OK' : nokItems.has(item.id) ? 'NOK' : 'Pendente';
+                const observation = itemObservations[item.id] || '';
                 const row = [
                     item.id,
                     `"${item.category}"`,
@@ -688,7 +755,8 @@
                     `"${item.criteria}"`,
                     `"${item.defect}"`,
                     `"${item.inspection}"`,
-                    `"${item.action}"`
+                    `"${item.action}"`,
+                    `"${observation}"`
                 ].join(',');
                 csvContent += row + "\n";
             });
@@ -715,24 +783,24 @@
             const detailsHTML = `
                 <div class="space-y-4 sm:space-y-6">
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-                        <div class="bg-gradient-to-br from-purple-50 to-indigo-100 dark:from-purple-900/40 dark:to-indigo-900/40 border border-purple-200 dark:border-purple-700 rounded-xl p-3 sm:p-4 shadow-sm">
-                            <h4 class="font-semibold text-purple-800 dark:text-purple-300 mb-2 text-sm sm:text-base">📋 Critério de Aceitação</h4>
-                            <p class="text-gray-700 text-sm sm:text-base" style="color: #374151;" data-dark-text="white">${item.criteria}</p>
+                        <div class="rounded-xl p-3 sm:p-4 shadow-sm" style="background: linear-gradient(135deg, #596476, #6b7489); border: 1px solid #4a5568;">
+                            <h4 class="font-semibold text-white mb-2 text-sm sm:text-base">📋 Critério de Aceitação</h4>
+                            <p class="text-white text-sm sm:text-base">${item.criteria}</p>
                         </div>
                         
-                        <div class="bg-gradient-to-br from-rose-50 to-pink-100 dark:from-rose-900/40 dark:to-pink-900/40 border border-rose-200 dark:border-rose-700 rounded-xl p-3 sm:p-4 shadow-sm">
-                            <h4 class="font-semibold text-rose-800 dark:text-rose-300 mb-2 text-sm sm:text-base">⚠️ Tipo de Defeito</h4>
-                            <p class="text-gray-700 text-sm sm:text-base" style="color: #374151;" data-dark-text="white">${item.defect}</p>
+                        <div class="rounded-xl p-3 sm:p-4 shadow-sm" style="background: linear-gradient(135deg, #4a5568, #596476); border: 1px solid #596476;">
+                            <h4 class="font-semibold text-white mb-2 text-sm sm:text-base">⚠️ Tipo de Defeito</h4>
+                            <p class="text-white text-sm sm:text-base">${item.defect}</p>
                         </div>
                         
-                        <div class="bg-gradient-to-br from-amber-50 to-orange-100 dark:from-amber-900/40 dark:to-orange-900/40 border border-amber-200 dark:border-amber-700 rounded-xl p-3 sm:p-4 shadow-sm">
-                            <h4 class="font-semibold text-amber-800 dark:text-amber-300 mb-2 text-sm sm:text-base">🔍 Tipo de Inspeção</h4>
-                            <p class="text-gray-700 text-sm sm:text-base" style="color: #374151;" data-dark-text="white">${item.inspection}</p>
+                        <div class="rounded-xl p-3 sm:p-4 shadow-sm" style="background: linear-gradient(135deg, #6b7489, #7a8396); border: 1px solid #596476;">
+                            <h4 class="font-semibold text-white mb-2 text-sm sm:text-base">🔍 Tipo de Inspeção</h4>
+                            <p class="text-white text-sm sm:text-base">${item.inspection}</p>
                         </div>
                         
-                        <div class="bg-gradient-to-br from-emerald-50 to-teal-100 dark:from-emerald-900/40 dark:to-teal-900/40 border border-emerald-200 dark:border-emerald-700 rounded-xl p-3 sm:p-4 shadow-sm">
-                            <h4 class="font-semibold text-emerald-800 dark:text-emerald-300 mb-2 text-sm sm:text-base">🔧 Ação Corretiva</h4>
-                            <p class="text-gray-700 text-sm sm:text-base" style="color: #374151;" data-dark-text="white">${item.action}</p>
+                        <div class="rounded-xl p-3 sm:p-4 shadow-sm" style="background: linear-gradient(135deg, #7a8396, #596476); border: 1px solid #4a5568;">
+                            <h4 class="font-semibold text-white mb-2 text-sm sm:text-base">🔧 Ação Corretiva</h4>
+                            <p class="text-white text-sm sm:text-base">${item.action}</p>
                         </div>
                     </div>
                     
@@ -740,7 +808,7 @@
                         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
                             <div>
                                 <h4 class="font-semibold text-slate-800 dark:text-white mb-1 text-sm sm:text-base">Status da Inspeção</h4>
-                                <p class="text-xs sm:text-sm text-slate-600" style="color: #475569;" data-dark-text="white">Categoria: ${item.category}</p>
+                                <p class="text-xs sm:text-sm text-white" style="color: white;">Categoria: ${item.category}</p>
                                 ${item.type ? `<p class="text-xs sm:text-sm text-indigo-600 dark:text-indigo-300 font-medium">Tipo: ${item.type}</p>` : ''}
                             </div>
                             <div class="text-center sm:text-right">
@@ -754,16 +822,24 @@
                         </div>
                     </div>
                     
-                    <div class="text-center flex flex-col sm:flex-row gap-3 justify-center">
-                        <button onclick="toggleItemOK(${itemId}); showItemDetails(${itemId})" 
-                                class="px-6 sm:px-8 py-3 rounded-xl font-semibold transition-all transform hover:scale-105 shadow-lg text-sm sm:text-base w-full sm:w-auto ${okItems.has(itemId) ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white' : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white'}">
-                            ${okItems.has(itemId) ? '↩️ Desmarcar OK' : '✅ Marcar OK'}
-                        </button>
-                        <button onclick="toggleItemNOK(${itemId}); showItemDetails(${itemId})" 
-                                class="px-6 sm:px-8 py-3 rounded-xl font-semibold transition-all transform hover:scale-105 shadow-lg text-sm sm:text-base w-full sm:w-auto ${nokItems.has(itemId) ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white' : 'bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 text-white'}">
-                            ${nokItems.has(itemId) ? '↩️ Desmarcar NOK' : '❌ Marcar NOK'}
-                        </button>
+                    <div class="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800/40 dark:to-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm" style="background: linear-gradient(135deg, #F5F6F8, #E8EAED); border-color: #D1D5DB;">
+                        <h4 class="font-semibold text-gray-900 dark:text-gray-900 mb-3 text-sm sm:text-base">📝 Observações</h4>
+                        <textarea 
+                            id="observation-${itemId}" 
+                            placeholder="Digite suas observações sobre este item..."
+                            class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white text-sm sm:text-base"
+                            rows="4"
+                            style="background-color: white; color: #000000; border-color: #d1d5db;"
+                            data-dark-bg="#374151"
+                            data-dark-text="#000000"
+                            data-dark-border="#4b5563"
+                        >${itemObservations[itemId] || ''}</textarea>
+                        <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                            As observações serão salvas automaticamente ao fechar esta janela.
+                        </div>
                     </div>
+                    
+
                 </div>
             `;
             
@@ -784,8 +860,27 @@
             showItemDetails(itemId); // Refresh modal content
         }
 
+        // Save observation for an item
+        function saveObservation(itemId) {
+            const textarea = document.getElementById(`observation-${itemId}`);
+            if (textarea) {
+                itemObservations[itemId] = textarea.value.trim();
+                saveToLocalStorage(); // Use unified save function
+            }
+        }
+
         // Close item modal
         function closeItemModal() {
+            // Save observation before closing
+            const modal = document.getElementById('item-modal');
+            const textarea = modal.querySelector('textarea[id^="observation-"]');
+            if (textarea) {
+                const itemId = parseInt(textarea.id.replace('observation-', ''));
+                itemObservations[itemId] = textarea.value.trim();
+                saveToLocalStorage(); // Use unified save function
+                console.log(`Observação salva para item ${itemId}:`, textarea.value.trim());
+            }
+            
             document.getElementById('item-modal').classList.add('hidden');
             document.getElementById('item-modal').classList.remove('flex');
         }
@@ -848,6 +943,7 @@
                                 <th>Tipo de Defeito</th>
                                 <th>Tipo de Inspeção</th>
                                 <th>Ação Corretiva</th>
+                                <th>Observações</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -864,10 +960,11 @@
             
             // Add table rows grouped by category
             Object.keys(categories).forEach(category => {
-                printContent += `<tr class="category-header"><td colspan="8"><strong>${category}</strong></td></tr>`;
+                printContent += `<tr class="category-header"><td colspan="9"><strong>${category}</strong></td></tr>`;
                 categories[category].forEach(item => {
                     const status = okItems.has(item.id) ? 'OK' : nokItems.has(item.id) ? 'NOK' : 'Pendente';
                     const statusClass = okItems.has(item.id) ? 'completed' : nokItems.has(item.id) ? 'nok' : 'pending';
+                    const observation = itemObservations[item.id] || '';
                     printContent += `
                         <tr class="${statusClass}">
                             <td>${item.id}</td>
@@ -878,6 +975,7 @@
                             <td>${item.defect}</td>
                             <td>${item.inspection}</td>
                             <td>${item.action}</td>
+                            <td>${observation}</td>
                         </tr>
                     `;
                 });
@@ -909,7 +1007,7 @@
                 // Switch to light mode
                 html.classList.remove('dark');
                 body.classList.remove('dark');
-                body.style.backgroundColor = 'white';
+                body.style.backgroundColor = '#E6E6E6';
                 icon.textContent = '🌙';
                 localStorage.setItem('darkMode', 'false');
                 applyLightMode();
@@ -929,6 +1027,8 @@
 
         // Apply light mode colors
         function applyLightMode() {
+            document.body.style.backgroundColor = '#E6E6E6';
+            
             const elementsWithDarkBg = document.querySelectorAll('[data-dark-bg]');
             elementsWithDarkBg.forEach(element => {
                 element.style.backgroundColor = 'white';
@@ -1030,6 +1130,20 @@
             
             // Update text colors for dark mode
             updateTextColors();
+            
+            // Update textarea colors in modals
+            const textareas = document.querySelectorAll('textarea[data-dark-bg]');
+            textareas.forEach(textarea => {
+                if (isDark) {
+                    textarea.style.backgroundColor = textarea.getAttribute('data-dark-bg');
+                    textarea.style.color = '#000000';
+                    textarea.style.borderColor = textarea.getAttribute('data-dark-border');
+                } else {
+                    textarea.style.backgroundColor = 'white';
+                    textarea.style.color = '#000000';
+                    textarea.style.borderColor = '#d1d5db';
+                }
+            });
         }
         
         // Update text colors based on dark mode
@@ -1071,6 +1185,40 @@
             });
         }
 
+        // Apply saved states to UI elements
+        function applySavedStates() {
+            const isDark = document.documentElement.classList.contains('dark');
+            
+            checklistItems.forEach(item => {
+                const itemElement = document.getElementById(`item-${item.id}`);
+                const checkboxOK = document.getElementById(`checkbox-ok-${item.id}`);
+                const checkboxNOK = document.getElementById(`checkbox-nok-${item.id}`);
+                const checkOK = document.getElementById(`check-ok-${item.id}`);
+                const checkNOK = document.getElementById(`check-nok-${item.id}`);
+                const status = document.getElementById(`status-${item.id}`);
+                
+                if (okItems.has(item.id)) {
+                    // Apply OK state
+                    itemElement.classList.add('checked');
+                    checkboxOK.classList.add('border-green-500');
+                    checkboxOK.style.borderColor = '#10b981';
+                    checkboxOK.style.borderWidth = '3px';
+                    checkOK.style.color = '#059669';
+                    status.classList.remove('hidden');
+                } else if (nokItems.has(item.id)) {
+                    // Apply NOK state
+                    itemElement.classList.add('checked-nok');
+                    checkboxNOK.classList.add('border-red-500');
+                    checkboxNOK.style.borderColor = '#ef4444';
+                    checkboxNOK.style.borderWidth = '3px';
+                    checkNOK.style.color = '#dc2626';
+                    status.classList.remove('hidden');
+                }
+            });
+            
+            updateStats();
+        }
+
         // Initialize dark mode from localStorage
         function initializeDarkMode() {
             const darkMode = localStorage.getItem('darkMode');
@@ -1087,7 +1235,7 @@
             } else {
                 html.classList.remove('dark');
                 body.classList.remove('dark');
-                body.style.backgroundColor = 'white';
+                body.style.backgroundColor = '#E6E6E6';
                 icon.textContent = '🌙';
                 setTimeout(() => applyLightMode(), 50);
             }
@@ -1095,17 +1243,37 @@
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
+            // Load saved data first
+            const hasData = loadFromLocalStorage();
+            
             initializeDarkMode();
             initializeChecklist();
-            // Update dark mode elements after checklist is initialized
-            setTimeout(() => {
-                updateDarkModeElements();
-            }, 100);
+            
+            // Apply saved states if data was loaded
+            if (hasData) {
+                setTimeout(() => {
+                    applySavedStates();
+                    updateDarkModeElements();
+                    console.log('Checklist restaurado com dados salvos anteriormente');
+                }, 100);
+            } else {
+                setTimeout(() => {
+                    updateDarkModeElements();
+                }, 100);
+            }
         });
+
+        // Auto-save when page is about to be closed or refreshed
+        window.addEventListener('beforeunload', function(e) {
+            saveToLocalStorage();
+        });
+
+        // Auto-save periodically (every 30 seconds)
+        setInterval(function() {
+            if (checkedItems.size > 0 || Object.keys(itemObservations).length > 0) {
+                saveToLocalStorage();
+            }
+        }, 30000);
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'96dbb1bda41f920d',t:'MTc1NDk1Njg0NS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'96e641da40f009d7',t:'MTc1NTA2NzYwNi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
-
-
-
-
